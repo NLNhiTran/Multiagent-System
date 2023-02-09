@@ -1,0 +1,975 @@
+;; This model uses the epiDEM Basic model as the base and incrementally built upon it with variously new components and desired features added to it,
+;; to serve the analyzing purpose of the research topic of interest over the educational impact and solution to COVID 19 misinformation spread.
+;; Own contribution of NetLogo coding that has been accounted for spreads across the entire structure, in all principal components:
+;; creating new breeds and agentsets, assigning relevant properties to multiple group of agents, establishing different setups and go procedures with different
+;; set of actions and appropriate behaviors assigned to each group of agents. Additionally, this model utitlizes the link components to establish cross-breed interations
+;; and explores the technique of changing one breed's variables via connection with another breed.
+;; On the interface tab, different sliders were added which allows the users to set up their own parameters.
+;; Next to that, there are two graphs expressed in absolute and percentage terms to measure and analyze the model subject over time.
+
+breed [hi hi-ed]            ;; Group of people with relatively higher education levels.
+breed [lo lo-ed]            ;; Group of people with relatively lower education levels.
+
+globals
+[
+  alpha                     ;; The average number of newly misinformed people per tick.
+  beta                      ;; The average number of newly corrected fact-checking individuals per tick.
+]
+
+hi-own                      ;; Define properties owned by group of relatively highly educated people.
+[
+  hi-misinformed?           ;; If true, the person is misinformed.
+  hi-corrected?             ;; If true, the person has first heard the false news, being temporarily misinformed for a while,
+                            ;; then going through a fact-checking process to correct the misinformation via their own source.
+                            ;; They are being able to make their own judgement based on the fact-checking results
+                            ;; and cannot be affected by the same piece of false news.
+  hi-susceptible?           ;; Track whether the person was initially susceptible to misinformation,
+                            ;; the assumption was that each individual has a risk of being affected by misinfomation, via their on and offline network.
+  hi-misinformation-length  ;; Number of days for which the person is being misinformed.
+  hi-corrected-time         ;; Number of days that it takes before the piece of false news gets corrected for each individual.
+  nb-hi-misinformed         ;; Number of misinformed people at the end of each tick.
+  nb-hi-corrected           ;; Number of people with corrected information at the end of each tick.
+]
+
+lo-own                      ;; Define properties owned by group of people with relatively lower education levels.
+[
+  lo-misinformed?           ;; If true, the person is misinformed.
+  lo-corrected?             ;; If true, the person has first heard the false news, being temporarily misinformed for a while,
+                            ;; then going through a fact-checking process to correct the misinformation via their own source.
+                            ;; They are being able to make their own judgement based on the fact-checking results
+                            ;; and cannot be affected by the same piece of false news.
+  lo-susceptible?           ;; Track whether the person was initially susceptible to misinformation,
+                            ;; the assumption was that each individual has a risk of being affected by misinfomation, via their on and offline network.
+  lo-misinformation-length  ;; Number of days for which the person is being misinformed.
+  lo-corrected-time         ;; Number of days that it takes before the piece of false news gets corrected for each individual.
+  nb-lo-misinformed         ;; Number of misinformed people at the end of each tick.
+  nb-lo-corrected           ;; Number of people with corrected information at the end of each tick.
+]
+
+;;;
+;;; SETUP PROCEDURES
+;;;
+
+to setup
+  clear-all                 ;; Set up the model as a hypothetical world with current COVID-19 situation
+  setup-people              ;; populated with people
+  ask patches               ;; and colored in magenta so that the people marked with color can stand out.
+    [set pcolor magenta]
+  reset-ticks
+end
+
+;; Different people are displayed in 6 different colors depending on their misinformation status and education levels
+;; White (lo-ed) and Yellow (hi-ed) are neutral individuals neither being misinformed nor corrected  (set at beginning)
+;; Blue (lo-ed) and Green (hi-ed) are fact-checking and corrected person
+;; Grey (lo-ed) and Orange (hi-ed) are a misinformed person
+
+to setup-people
+  set-default-shape hi "person"   ;; Set default turtle-shapes as "person" for breed "hi"
+  set-default-shape lo "person"   ;; Set default turtle-shapes as "person" for breed "lo"
+
+  ;; Create the initial hi-ed people (with relatively high education level)
+  create-hi initial-hi-ed
+  [
+    setxy random-xcor random-ycor ;; Set up random coordinates to locate people
+    ;; Assign the initial status to the hi-ed population
+    set hi-corrected? false       ;; This person is neither being corrected
+    set hi-misinformed? false     ;; nor misinformed initially,
+    set hi-susceptible? true      ;; but susceptible to misinformation
+    set color yellow              ;; marked yellow for hi-ed neutral initials.
+    ;; Set the corrected time for each agent to fall on a
+    ;; neutral distribution around the average corrected time among hi-ed people.
+    ;; This is piece of code which is specifically copied directly from the basic model to ensure
+    ;; the normality and randomization assumption of the distribution.
+    set hi-corrected-time random-normal hi-average-corrected-time hi-average-corrected-time / 2
+    ;; Make sure it lies between 0 and 2x average-corrected-time
+    if hi-corrected-time > hi-average-corrected-time * 2 [
+      set hi-corrected-time hi-average-corrected-time * 2
+    ]
+    if hi-corrected-time < 0 [ set hi-corrected-time 0 ]
+    ;; Each hi-ed individual has a 10% chance of starting out misinformed.
+    ;; This is based on the assumption that hi-ed population are less likely to buy false news compared to lo-ed population.
+    if (random-float 100 < 10)
+    [
+      set hi-misinformed? true    ;; Assign new status for this part of the initial-hi-ed population as "misinformed"
+      set hi-susceptible? false   ;; and reverse the "susceptible" attribute.
+      set hi-misinformation-length random hi-corrected-time ;; Set the misinformation length randomly around the hi-ed average corrected time.
+    ]
+    if hi-misinformed?
+    [ set color orange ]          ;; Assign color to mark misinformed hi-ed agent.
+    if hi-corrected?
+    [ set color green ]           ;; Assign color to mark corrected hi-ed agent.
+  ]
+
+  ;; Create the initial lo-ed people (with relatively low education level)
+  create-lo initial-lo-ed
+  [
+    setxy random-xcor random-ycor ;; Set up random coordinates to locate people
+    ;; Assign the initial status to the lo-ed population
+    set lo-corrected? false       ;; This person is neither being corrected
+    set lo-misinformed? false     ;; nor misinformed initially,
+    set lo-susceptible? true      ;; but susceptible to misinformation
+    set color white               ;; marked white for lo-ed neutral initials.
+    ;; Set the corrected time for each agent to fall on a
+    ;; neutral distribution around the average corrected time among lo-ed people.
+    ;; This is piece of code which is specifically copied directly from the basic model to ensure
+    ;; the normality and randomization assumption of the distribution.
+    set lo-corrected-time random-normal lo-average-corrected-time lo-average-corrected-time / 2
+    ;; make sure it lies between 0 and 2x average-corrected-time
+    if lo-corrected-time > lo-average-corrected-time * 2 [
+      set lo-corrected-time lo-average-corrected-time * 2
+    ]
+    if lo-corrected-time < 0 [ set lo-corrected-time 0 ]
+    ;; Each lo-ed individual has a 20% chance of starting out misinformed.
+    ;; This is based on the assumption that lo-ed population are more likely to buy false news compared to hi-ed population.
+    if (random-float 100 < 20)
+    [
+      set lo-misinformed? true    ;; Assign new status for this part of the initial-lo-ed population as "misinformed"
+      set lo-susceptible? false   ;; and reverse the "susceptible" attribute.
+      set lo-misinformation-length random lo-corrected-time ;; Set the misinformation length randomly around the lo-ed average corrected time.
+    ]
+    if lo-misinformed?            ;; Assign color to mark misinformed lo-ed agent.
+    [ set color gray ]
+    if lo-corrected?              ;; Assign color to mark corrected lo-ed agent.
+    [ set color blue ]
+  ]
+end
+
+;;;
+;;; GO PROCEDURES
+;;;
+
+to go
+  ;; Count if all turtles are not misinformed.
+  ;; The entire population had been misinformed and now all information should be corrected,
+  ;; make the model stops.
+  if all? hi [ not hi-misinformed? ] and all? lo [ not lo-misinformed? ]
+    [ stop ]
+  ;; Ask the turtles to take actions accordingly based on their education levels and and misinformation statuses
+  ask turtles
+    [ move            ;; Please refer to the definition of action "move" for further details.
+      clear-count     ;; Please refer to the definition of "clear-count" for further details.
+      spread          ;; Please refer to the definition of action "spread" for further details.
+      correct         ;; Please refer to the definition of action "correct" for further details.
+  ;; Assign color respectively to status changes
+  ;; for breed hi
+  ask hi with
+    [ hi-misinformed? ]
+    [ set color orange]
+  ask hi with
+    [ hi-corrected? ]
+    [ set color green]
+  ;; for breed lo
+  ask lo with
+    [ lo-misinformed? ]
+    [ set color gray ]
+  ask lo with
+    [ lo-corrected? ]
+    [ set color blue ]
+    ]
+ tick ;; trigger tick, one day passed
+end
+
+;;;Defintions of multiple action sets for all agents;;;
+
+;; Define action "move". This is an all turtle procedure.
+to move
+  rt random-float 360       ;; People move about towards random direction at random speed.
+  fd 1                      ;; One step forward.
+end
+
+;; Define "clear count". This is an all turtle procedure.
+to clear-count
+  ask hi                    ;; clear count for breed hi
+  [ set nb-hi-misinformed 0
+    set nb-hi-corrected 0 ]
+  ask lo                    ;; clear count for breed lo
+  [ set nb-lo-misinformed 0
+    set nb-lo-corrected 0 ]
+end
+
+;; Define action "spread".
+to spread
+  ifelse breed = hi         ;; if agent falls into breed hi
+   [ hi-spread-false-news]  ;; then takes first action
+   [ lo-spread-false-news]  ;; otherwise takes the second action.
+end
+
+;; Define action "correct".
+to correct
+  ifelse breed = hi         ;; if agent falls into breed hi
+  [ hi-maybe-corrected]     ;; then ask agent refers to the first action
+  [ lo-maybe-corrected]     ;; otherwise refers to the second action.
+end
+
+;;;Defintions of breed-based actions;;;
+
+;; Misinformation occur to more educated people
+to hi-spread-false-news
+   let hi-nearby-neutral (turtles-on neighbors) with [breed = hi] ;; Create local variable called nearby neighbors who are susceptible to misinformation spread via their network of people.
+   with [ not hi-misinformed? and not hi-corrected?]              ;; Marked them initially as "neutral" and yet "susceptible" to false news.
+     if hi-nearby-neutral != nobody                               ;; As long as there is a nearby neighbor identified,
+     [ ask hi-nearby-neutral                                      ;; ask them
+       [ if random-float 100 < hi-spread-chance                   ;; to move around and get into contact with false news.
+         [ set hi-misinformed? true                               ;; Set their new status as newly "misinformed" now,
+           set nb-hi-misinformed (nb-hi-misinformed + 1)          ;; and update the count.
+         ]
+       ]
+       ask hi-nearby-neutral [create-links-with n-of no.-cross-breed-contacts lo [ set color 123 ] ]  ;; Ask the same group of neighbors spread further the news to
+       ask hi-nearby-neutral [if link-neighbors = 123 [set hi-misinformed? true]]                     ;; people within their contact who has opposite education level background.
+     ]
+end
+
+;; Misinformation occur to less educated people
+to lo-spread-false-news
+   let lo-nearby-neutral (turtles-on neighbors) with [breed = lo] ;; Create local variable called nearby neighbors who are susceptible to misinformation spread via their network of people.
+   with [ not lo-misinformed? and  not lo-corrected?]             ;; Marked them initially as "neutral" and yet "susceptible" to false news.
+     if lo-nearby-neutral != nobody                               ;; As long as there is a nearby neighbor identified,
+     [ ask lo-nearby-neutral                                      ;; ask them
+       [ if random-float 100 < lo-spread-chance                   ;; to move around and get into contact with false news.
+         [ set lo-misinformed? true                               ;; Set their new status as newly "misinformed" now,
+           set nb-lo-misinformed (nb-lo-misinformed + 1)          ;; and update the count.
+         ]
+       ]
+     ]
+    ask lo-nearby-neutral [create-links-with n-of no.-cross-breed-contacts hi [ set color 124 ] ]     ;; Ask the same group of neighbors spread further the news to
+    ask lo-nearby-neutral [if link-neighbors = 124 [set lo-misinformed? true]]                        ;; people within their contact who has opposite education level background.
+end
+
+;; Misinformed (hi-ed) people carried the false news around and eventually seek to verify the factual information,
+;; either via their own search on social media or via direct contact with non-misinformed people.
+;; This is a probable chance of being corrected as the assumption made was that hi-ed people have different levels of awareness
+;; and abilities to analyze the same piece of facts, hence different chances of being corrected with news as well.
+to hi-maybe-corrected
+  set hi-misinformation-length hi-misinformation-length + 1  ;; Increase the misinformation length assigned to each agent by 1 day after each tick
+  if hi-misinformation-length > hi-corrected-time            ;; Check if misinformation length is well above the corrected time
+  [
+    if random-float 100 < hi-correction-chance               ;; ask the agents to compare themselves with the correction chance,
+    [ set hi-misinformed? false                              ;; to convert into a new status of no longer being misinformed,
+      set hi-corrected? true                                 ;; officially being corrected and immuned from the same piece of false news
+      set nb-hi-corrected (nb-hi-corrected + 1)              ;; and update the count.
+    ]
+    ask hi with [ hi-misinformed?] [create-links-with n-of no.-cross-breed-contacts lo with [not lo-misinformed?] [ set color 125 ] ] ;; ask hi-ed agent to create a number of contacts with the lo-ed people within their network
+    ask hi with [ hi-misinformed?] [if link-neighbors = 125 [set hi-corrected? true]]                                                 ;; after the interaction, the lo-ed misinformed person can also be updated with the correct news.
+  ]
+end
+
+
+;; Misinformed people carried the false news around and eventually seek to verify the factual information,
+;; either via their own search on social media or via direct contact with non-misinformed people.
+;; This is a probable chance of being corrected as the assumption made was that lo-ed people have different levels of awareness
+;; and abilities to analyze the same piece of facts, hence different chances of being corrected with news as well.
+to lo-maybe-corrected
+  set lo-misinformation-length lo-misinformation-length + 1  ;; Increase the misinformation length assigned to each agent by 1 day after each tick
+  if lo-misinformation-length > lo-corrected-time            ;; Check if misinformation length is well above the corrected time
+  [
+    if random-float 100 < lo-correction-chance               ;; ask the agents to compare themselves with the correction chance,
+    [ set lo-misinformed? false                              ;; to convert into a new status of no longer being misinformed,
+      set lo-corrected? true                                 ;; officially being corrected and immuned from the same piece of false news
+      set nb-lo-corrected (nb-lo-corrected + 1)              ;; and update the count.
+    ]
+    ask lo with [ lo-misinformed?] [create-links-with n-of no.-cross-breed-contacts hi with [not hi-misinformed?] [ set color 126 ] ] ;; ask lo-ed agent to create a number of contacts with the hi-ed people within their network
+    ask lo with [ lo-misinformed?] [if link-neighbors = 126 [set lo-corrected? true]]                                                 ;; after the interaction, the hi-ed misinformed person can also be updated with the correct news.
+  ]
+end
+
+; Copyright 2021 Tilburg University DSS Pre-Master Course Group 16
+; See Info tab for full copyright and license.
+@#$#@#$#@
+GRAPHICS-WINDOW
+644
+13
+1102
+472
+-1
+-1
+18.0
+1
+10
+1
+1
+1
+0
+1
+1
+1
+-12
+12
+-12
+12
+1
+1
+1
+days
+30.0
+
+BUTTON
+233
+112
+316
+145
+setup
+setup
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
+
+BUTTON
+333
+112
+416
+145
+go
+go
+T
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+0
+
+SLIDER
+46
+14
+315
+47
+initial-hi-ed
+initial-hi-ed
+50
+200
+140.0
+5
+1
+NIL
+HORIZONTAL
+
+PLOT
+342
+165
+636
+295
+Populations
+days
+# of people
+0.0
+10.0
+0.0
+10.0
+true
+true
+"" ""
+PENS
+"Hi-misinformed" 1.0 0 -955883 true "" "plot count hi with [ hi-misinformed? ]"
+"Hi-corrected" 1.0 0 -10899396 true "" "plot count hi with [ not hi-misinformed? ]"
+"Lo-misinformed" 1.0 0 -9276814 true "" "plot count lo with [ lo-misinformed? ]"
+"Lo-corrected" 1.0 0 -14070903 true "" "plot count lo with [ not lo-misinformed? ]"
+
+SLIDER
+46
+60
+315
+93
+hi-spread-chance
+hi-spread-chance
+10
+100
+15.0
+5
+1
+NIL
+HORIZONTAL
+
+SLIDER
+47
+110
+205
+143
+hi-correction-chance
+hi-correction-chance
+10
+100
+65.0
+5
+1
+NIL
+HORIZONTAL
+
+PLOT
+15
+165
+333
+293
+Cumulative misinformed and corrected
+days
+% total pop
+0.0
+10.0
+0.0
+10.0
+true
+true
+"" ""
+PENS
+"% Hi-misinformed" 1.0 0 -955883 true "" "plot ((count hi with [ hi-corrected? ] + count hi with [ hi-misinformed? ]) / initial-hi-ed * 100)"
+"% Hi-corrected" 1.0 0 -14439633 true "" "plot (count hi with [ hi-corrected? ]/ initial-hi-ed) * 100"
+"% Lo-misinformed" 1.0 0 -7500403 true "" "plot ((count lo with [ lo-corrected? ] + count lo with [ lo-misinformed? ]) / initial-lo-ed * 100)"
+"% Lo-corrected" 1.0 0 -14070903 true "" "plot (count lo with [ lo-corrected? ]/ initial-lo-ed) * 100"
+
+SLIDER
+44
+310
+313
+343
+hi-average-corrected-time
+hi-average-corrected-time
+20
+300
+150.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+330
+15
+597
+48
+initial-lo-ed
+initial-lo-ed
+0
+200
+70.0
+5
+1
+NIL
+HORIZONTAL
+
+SLIDER
+425
+107
+597
+140
+lo-correction-chance
+lo-correction-chance
+10
+100
+25.0
+5
+1
+NIL
+HORIZONTAL
+
+SLIDER
+330
+60
+597
+93
+lo-spread-chance
+lo-spread-chance
+10
+100
+80.0
+5
+1
+NIL
+HORIZONTAL
+
+SLIDER
+336
+310
+595
+343
+lo-average-corrected-time
+lo-average-corrected-time
+20
+300
+150.0
+1
+1
+NIL
+HORIZONTAL
+
+INPUTBOX
+46
+359
+201
+419
+No.-cross-breed-contacts
+3.0
+1
+0
+Number
+
+MONITOR
+1122
+15
+1289
+60
+count lo misinformed agents
+count turtles with [color = gray]
+2
+1
+11
+
+MONITOR
+1122
+74
+1288
+119
+count lo corrected agents
+count turtles with [color = blue]
+2
+1
+11
+
+MONITOR
+1305
+15
+1472
+60
+count hi misinformed agents
+count turtles with [color = orange]
+2
+1
+11
+
+MONITOR
+1305
+73
+1473
+118
+count hi corrected agents
+count turtles with [color = green]
+2
+1
+11
+
+@#$#@#$#@
+## ACKNOWLEDGMENT
+
+This is the first version built of our group under the the Agent-Based Modelling and Simulation Project Assignment. 
+
+This model uses the epiDEM Basic model as the base and incrementally built upon it with variously new components and desired features added to it for the research topic of interest over educational impact and solution to COVID 19 misinformation spread. 
+
+## WHAT IS IT?
+
+What is it about?
+ 
+This model simulates the spread of misinformation in a hypothetical population during the pandemic of COVID 19.The model describes the dynamics of a mix population of people with different education levels in a society, where individuals are harmed by false news, misinformation and non-sensical conspiracy theories at different rates. The model describes the phenomenon where misinformation emerges when one misinformed person starts spreading false news to this wholly susceptible population. 
+
+What motivates us on working on this topic?
+
+While COVID 19 spreads aggressively and rapidly across the world, many people have been witnessing heart-wrenching life-turning unexpected events where their closest ones leave them forever. Yet, there is an ongoing general mass suspicion among people that if COVID 19 does really exist. Due to misperceptions and lack of understanding, riots have arisen to protest against the government measures, which in turns prolonging the pandemic. Mix of opinions slow down the vaccination rate and case surge threatens hospital capacity worldwide. Hence our group set sights on simulating misinformation spread under educational impact in light of the COVID 19 pandemic. 
+
+What are the assumptions?
+
+This model assumes a mixed population between two groups of people: people at relatively higher education level and people at relatively lower education level. 
+It also assumes that each individual within this population has a risk of being susceptible to fake news and proganda. They can be affected by one another via their own  network, which can be online or offline. There is also homogeneous mixing, in that each person in the world has the same chance of interacting with any other person within the same group of people. In terms of beliefs, the model assumes that there are a difference in the level of knowledge, awareness and abilities to analyze facts between the people with more advantageous educational background compared to others. For example, people that are highly educated are less likely belive in false news compared to less educated people. Similarly the same things happen when it comes to analyze the same piece of facts. People with less of an education background are less likely to be corrected from false news as well. 
+
+This model incorporates all of the above assumptions, each hi-ed (relatively highly educated people) individual has a 10% chance of being initialized as misinformed and each lo-ed (relatively lowly educated people) individual has a 20% chance of being initialized as posessing the false news. 
+
+What is the purpose of this model?
+Overall, this model helps users
+1) Simulate a real-world situtation where people can freely interact with people within their network of people, susceptible to misinformation and given chances to correct their knowledge. 
+2) Measure and evaluate the effect of having more educated people in a population to tackle the misinformation spread issue. 
+3) Examine how long does it take in general to correct the entire population which has been undergoing a misinformation pandemic. 
+4) Understanding the interactions between agents and experiment different techniques to build a NetLogo model. Apply the knowledge learned to systematically analyze different measures and model outcomes. 
+5) Provide opportunities to extend the model to evaluate other different relevant factors that might intrigue the research topic purpose. 
+
+## HOW IT WORKS
+
+When the model is first set up there are two different agents; initial high educated agent and initiallow educated agents. A propotion of people from both group get asisgned with carrying some piece of fake news. Everyon starts moving around at random speed and random direction with time steps measured in days. Each tick counts as one day passes by.
+Upon coming into contact with another neighbors within his/her contacts (same-breed and cross-breed), by being in any of the eight surrounding neighbors of a misinformed person or in the same location, the initially neutral (not yet misinformed neither corrected) person  has a chance of getting the fake news and assigned  with a probability to believe in this fake news based on his/her group nature (hi-ed or lo-ed). The misinformed person can also be assigned with a chance to being corrected from this fake news. They can start seeking to facts to verify themselves or getting in touch with another neighbors (same-breed and cross-breed). The correction time represent the amount of time that it takes for the person to do some fact checking and complete get corrected and get passed this fake news or suspicions. 
+
+The user can set the number of initial people from both groups in the world, the average correction time as well as their probability of being misinformed and/or being corrected.
+
+The colors of the individuals indicate their respective education levels and misinformation status. To here are 6 different colors assigned the agents.
+
+- White (lo-ed) and Yellow (hi-ed) are neutral individuals neither being misinformed nor corrected  (set at beginning)
+- Blue (lo-ed) and Green (hi-ed) are fact-checking and corrected person
+- Grey (lo-ed) and Orange (hi-ed) are a misinformed person
+
+Beneath these first sliders, two different graphs are plotted:
+- The cumulative misinformed and corrected agents, split further into the initial high and low educated agents.
+- The population, plotting the total amount of agents over time.
+
+At last we can see, next to the running model;
+- Total amount of misformed initial high educated agents
+- Total amount of corrected initial high educated agents
+- Total amount of misformed initial low educated agents
+- Total amount of corrected initial low educated agents
+
+## HOW TO USE IT
+
+SETUP creates a number of individuals according to the parameter values chosen by the user. GO starts the model and runs it continuously until the entire population are fully corrected after getting affected by the fake news.
+
+Time-step considered for this model is in days, although any suitable time unit will do, the group agrees that misinformation and correction should happen on daily basis. 
+
+Below is a summary of the sliders in the model.
+
+INITIAL-HI-ED and INITIAL-LO-ED The amount of initial high and low educated agents, the amount change has a range of 0 to 200.
+SPREAD-CHANCE (10 - 100) The probability of an initial high and low educated agent becoming misformed, range 0 to 100.
+HI-CORRECTION-CHANCE and LO-CORRECTION-CHANCE (10 - 100) The probability of an initial high and low educated agent becoming corrected, meaning that they are not misformed anymore, range 0 to 100.
+HI-AVERAGE-CORRECTED-TIME and LO-AVERAGE-CORRECTED-TIME (50 - 300): Number of days that it takes before the piece of false news gets corrected for each individual.
+
+## THINGS TO NOTICE
+
+Even though the education level is an important factor we cannot exactly say that lower education leads to this problem. It is also the same for the correction of misinformation. Time is another factor in our model that we took from the real world because it can be said that higher educated people are more likely to have highly educated people who can reach or have the correct information so that could affect the average correction time. The graphs and the monitors are  making the model whole since we need to understand it easily. Even a person who has a limited knowledge could look at the model and see the result and make some assumptions about it.
+
+
+## EXTENDING THE MODEL
+
+Due to the above things that were noticed, this base model can be extended further by building additional settings to cover the assumptions made above over differences in spread chance, correction chance and average corrected time between both breeds of agents and see what the results are.
+
+It is also noticed and worth trying to extend the model by plotting different countries with diffenrent amount of hi-ed and lo-ed on the same world to project a direct comparison view. 
+
+## RELATED MODELS
+
+This base model has been actually extended further taking into consideration of the above ideas. 
+
+## CREDITS AND REFERENCES 
+
+This model is built upon the below basic model: 
+* Yang, C. and Wilensky, U. (2011).  NetLogo epiDEM Basic model.  http://ccl.northwestern.edu/netlogo/models/epiDEMBasic.  Center for Connected Learning and Computer-Based Modeling, Northwestern University, Evanston, IL.
+
+Own contribution of NetLogo coding that has been accounted for spreads across the entire structure, in all principal components to serve the further analysis on the topic of interest such as creating new breeds and agentsets, assigning relevant properties to multiple group of agents, establishing different setups and go procedures with different 
+set of actions and appropriate behaviors assigned to each group of agents. 
+
+## CITATION
+
+* Yang, C. and Wilensky, U. (2011).  NetLogo epiDEM Basic model.  http://ccl.northwestern.edu/netlogo/models/epiDEMBasic.  Center for Connected Learning and Computer-Based Modeling, Northwestern University, Evanston, IL.
+
+* Wilensky, U. (1999). NetLogo. http://ccl.northwestern.edu/netlogo/. Center for Connected Learning and Computer-Based Modeling, Northwestern University, Evanston, IL.
+
+## COPYRIGHT AND LICENSE
+
+Copyright 2021 Tilburg University DSS Pre-Master Course Group 16
+@#$#@#$#@
+default
+true
+0
+Polygon -7500403 true true 150 5 40 250 150 205 260 250
+
+airplane
+true
+0
+Polygon -7500403 true true 150 0 135 15 120 60 120 105 15 165 15 195 120 180 135 240 105 270 120 285 150 270 180 285 210 270 165 240 180 180 285 195 285 165 180 105 180 60 165 15
+
+arrow
+true
+0
+Polygon -7500403 true true 150 0 0 150 105 150 105 293 195 293 195 150 300 150
+
+box
+false
+0
+Polygon -7500403 true true 150 285 285 225 285 75 150 135
+Polygon -7500403 true true 150 135 15 75 150 15 285 75
+Polygon -7500403 true true 15 75 15 225 150 285 150 135
+Line -16777216 false 150 285 150 135
+Line -16777216 false 150 135 15 75
+Line -16777216 false 150 135 285 75
+
+bug
+true
+0
+Circle -7500403 true true 96 182 108
+Circle -7500403 true true 110 127 80
+Circle -7500403 true true 110 75 80
+Line -7500403 true 150 100 80 30
+Line -7500403 true 150 100 220 30
+
+butterfly
+true
+0
+Polygon -7500403 true true 150 165 209 199 225 225 225 255 195 270 165 255 150 240
+Polygon -7500403 true true 150 165 89 198 75 225 75 255 105 270 135 255 150 240
+Polygon -7500403 true true 139 148 100 105 55 90 25 90 10 105 10 135 25 180 40 195 85 194 139 163
+Polygon -7500403 true true 162 150 200 105 245 90 275 90 290 105 290 135 275 180 260 195 215 195 162 165
+Polygon -16777216 true false 150 255 135 225 120 150 135 120 150 105 165 120 180 150 165 225
+Circle -16777216 true false 135 90 30
+Line -16777216 false 150 105 195 60
+Line -16777216 false 150 105 105 60
+
+car
+false
+0
+Polygon -7500403 true true 300 180 279 164 261 144 240 135 226 132 213 106 203 84 185 63 159 50 135 50 75 60 0 150 0 165 0 225 300 225 300 180
+Circle -16777216 true false 180 180 90
+Circle -16777216 true false 30 180 90
+Polygon -16777216 true false 162 80 132 78 134 135 209 135 194 105 189 96 180 89
+Circle -7500403 true true 47 195 58
+Circle -7500403 true true 195 195 58
+
+circle
+false
+0
+Circle -7500403 true true 0 0 300
+
+circle 2
+false
+0
+Circle -7500403 true true 0 0 300
+Circle -16777216 true false 30 30 240
+
+cow
+false
+0
+Polygon -7500403 true true 200 193 197 249 179 249 177 196 166 187 140 189 93 191 78 179 72 211 49 209 48 181 37 149 25 120 25 89 45 72 103 84 179 75 198 76 252 64 272 81 293 103 285 121 255 121 242 118 224 167
+Polygon -7500403 true true 73 210 86 251 62 249 48 208
+Polygon -7500403 true true 25 114 16 195 9 204 23 213 25 200 39 123
+
+cylinder
+false
+0
+Circle -7500403 true true 0 0 300
+
+dot
+false
+0
+Circle -7500403 true true 90 90 120
+
+face happy
+false
+0
+Circle -7500403 true true 8 8 285
+Circle -16777216 true false 60 75 60
+Circle -16777216 true false 180 75 60
+Polygon -16777216 true false 150 255 90 239 62 213 47 191 67 179 90 203 109 218 150 225 192 218 210 203 227 181 251 194 236 217 212 240
+
+face neutral
+false
+0
+Circle -7500403 true true 8 7 285
+Circle -16777216 true false 60 75 60
+Circle -16777216 true false 180 75 60
+Rectangle -16777216 true false 60 195 240 225
+
+face sad
+false
+0
+Circle -7500403 true true 8 8 285
+Circle -16777216 true false 60 75 60
+Circle -16777216 true false 180 75 60
+Polygon -16777216 true false 150 168 90 184 62 210 47 232 67 244 90 220 109 205 150 198 192 205 210 220 227 242 251 229 236 206 212 183
+
+fish
+false
+0
+Polygon -1 true false 44 131 21 87 15 86 0 120 15 150 0 180 13 214 20 212 45 166
+Polygon -1 true false 135 195 119 235 95 218 76 210 46 204 60 165
+Polygon -1 true false 75 45 83 77 71 103 86 114 166 78 135 60
+Polygon -7500403 true true 30 136 151 77 226 81 280 119 292 146 292 160 287 170 270 195 195 210 151 212 30 166
+Circle -16777216 true false 215 106 30
+
+flag
+false
+0
+Rectangle -7500403 true true 60 15 75 300
+Polygon -7500403 true true 90 150 270 90 90 30
+Line -7500403 true 75 135 90 135
+Line -7500403 true 75 45 90 45
+
+flower
+false
+0
+Polygon -10899396 true false 135 120 165 165 180 210 180 240 150 300 165 300 195 240 195 195 165 135
+Circle -7500403 true true 85 132 38
+Circle -7500403 true true 130 147 38
+Circle -7500403 true true 192 85 38
+Circle -7500403 true true 85 40 38
+Circle -7500403 true true 177 40 38
+Circle -7500403 true true 177 132 38
+Circle -7500403 true true 70 85 38
+Circle -7500403 true true 130 25 38
+Circle -7500403 true true 96 51 108
+Circle -16777216 true false 113 68 74
+Polygon -10899396 true false 189 233 219 188 249 173 279 188 234 218
+Polygon -10899396 true false 180 255 150 210 105 210 75 240 135 240
+
+house
+false
+0
+Rectangle -7500403 true true 45 120 255 285
+Rectangle -16777216 true false 120 210 180 285
+Polygon -7500403 true true 15 120 150 15 285 120
+Line -16777216 false 30 120 270 120
+
+leaf
+false
+0
+Polygon -7500403 true true 150 210 135 195 120 210 60 210 30 195 60 180 60 165 15 135 30 120 15 105 40 104 45 90 60 90 90 105 105 120 120 120 105 60 120 60 135 30 150 15 165 30 180 60 195 60 180 120 195 120 210 105 240 90 255 90 263 104 285 105 270 120 285 135 240 165 240 180 270 195 240 210 180 210 165 195
+Polygon -7500403 true true 135 195 135 240 120 255 105 255 105 285 135 285 165 240 165 195
+
+line
+true
+0
+Line -7500403 true 150 0 150 300
+
+line half
+true
+0
+Line -7500403 true 150 0 150 150
+
+pentagon
+false
+0
+Polygon -7500403 true true 150 15 15 120 60 285 240 285 285 120
+
+person
+false
+0
+Circle -7500403 true true 110 5 80
+Polygon -7500403 true true 105 90 120 195 90 285 105 300 135 300 150 225 165 300 195 300 210 285 180 195 195 90
+Rectangle -7500403 true true 127 79 172 94
+Polygon -7500403 true true 195 90 240 150 225 180 165 105
+Polygon -7500403 true true 105 90 60 150 75 180 135 105
+
+person lefty
+false
+0
+Circle -7500403 true true 170 5 80
+Polygon -7500403 true true 165 90 180 195 150 285 165 300 195 300 210 225 225 300 255 300 270 285 240 195 255 90
+Rectangle -7500403 true true 187 79 232 94
+Polygon -7500403 true true 255 90 300 150 285 180 225 105
+Polygon -7500403 true true 165 90 120 150 135 180 195 105
+
+person righty
+false
+0
+Circle -7500403 true true 50 5 80
+Polygon -7500403 true true 45 90 60 195 30 285 45 300 75 300 90 225 105 300 135 300 150 285 120 195 135 90
+Rectangle -7500403 true true 67 79 112 94
+Polygon -7500403 true true 135 90 180 150 165 180 105 105
+Polygon -7500403 true true 45 90 0 150 15 180 75 105
+
+plant
+false
+0
+Rectangle -7500403 true true 135 90 165 300
+Polygon -7500403 true true 135 255 90 210 45 195 75 255 135 285
+Polygon -7500403 true true 165 255 210 210 255 195 225 255 165 285
+Polygon -7500403 true true 135 180 90 135 45 120 75 180 135 210
+Polygon -7500403 true true 165 180 165 210 225 180 255 120 210 135
+Polygon -7500403 true true 135 105 90 60 45 45 75 105 135 135
+Polygon -7500403 true true 165 105 165 135 225 105 255 45 210 60
+Polygon -7500403 true true 135 90 120 45 150 15 180 45 165 90
+
+square
+false
+0
+Rectangle -7500403 true true 30 30 270 270
+
+square 2
+false
+0
+Rectangle -7500403 true true 30 30 270 270
+Rectangle -16777216 true false 60 60 240 240
+
+star
+false
+0
+Polygon -7500403 true true 151 1 185 108 298 108 207 175 242 282 151 216 59 282 94 175 3 108 116 108
+
+target
+false
+0
+Circle -7500403 true true 0 0 300
+Circle -16777216 true false 30 30 240
+Circle -7500403 true true 60 60 180
+Circle -16777216 true false 90 90 120
+Circle -7500403 true true 120 120 60
+
+tree
+false
+0
+Circle -7500403 true true 118 3 94
+Rectangle -6459832 true false 120 195 180 300
+Circle -7500403 true true 65 21 108
+Circle -7500403 true true 116 41 127
+Circle -7500403 true true 45 90 120
+Circle -7500403 true true 104 74 152
+
+triangle
+false
+0
+Polygon -7500403 true true 150 30 15 255 285 255
+
+triangle 2
+false
+0
+Polygon -7500403 true true 150 30 15 255 285 255
+Polygon -16777216 true false 151 99 225 223 75 224
+
+truck
+false
+0
+Rectangle -7500403 true true 4 45 195 187
+Polygon -7500403 true true 296 193 296 150 259 134 244 104 208 104 207 194
+Rectangle -1 true false 195 60 195 105
+Polygon -16777216 true false 238 112 252 141 219 141 218 112
+Circle -16777216 true false 234 174 42
+Rectangle -7500403 true true 181 185 214 194
+Circle -16777216 true false 144 174 42
+Circle -16777216 true false 24 174 42
+Circle -7500403 false true 24 174 42
+Circle -7500403 false true 144 174 42
+Circle -7500403 false true 234 174 42
+
+turtle
+true
+0
+Polygon -10899396 true false 215 204 240 233 246 254 228 266 215 252 193 210
+Polygon -10899396 true false 195 90 225 75 245 75 260 89 269 108 261 124 240 105 225 105 210 105
+Polygon -10899396 true false 105 90 75 75 55 75 40 89 31 108 39 124 60 105 75 105 90 105
+Polygon -10899396 true false 132 85 134 64 107 51 108 17 150 2 192 18 192 52 169 65 172 87
+Polygon -10899396 true false 85 204 60 233 54 254 72 266 85 252 107 210
+Polygon -7500403 true true 119 75 179 75 209 101 224 135 220 225 175 261 128 261 81 224 74 135 88 99
+
+wheel
+false
+0
+Circle -7500403 true true 3 3 294
+Circle -16777216 true false 30 30 240
+Line -7500403 true 150 285 150 15
+Line -7500403 true 15 150 285 150
+Circle -7500403 true true 120 120 60
+Line -7500403 true 216 40 79 269
+Line -7500403 true 40 84 269 221
+Line -7500403 true 40 216 269 79
+Line -7500403 true 84 40 221 269
+
+x
+false
+0
+Polygon -7500403 true true 270 75 225 30 30 225 75 270
+Polygon -7500403 true true 30 75 75 30 270 225 225 270
+@#$#@#$#@
+NetLogo 6.2.0
+@#$#@#$#@
+@#$#@#$#@
+@#$#@#$#@
+@#$#@#$#@
+@#$#@#$#@
+default
+0.0
+-0.2 0 0.0 1.0
+0.0 1 1.0 0.0
+0.2 0 0.0 1.0
+link direction
+true
+0
+Line -7500403 true 150 150 90 180
+Line -7500403 true 150 150 210 180
+@#$#@#$#@
+0
+@#$#@#$#@

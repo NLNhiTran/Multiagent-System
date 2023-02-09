@@ -1,0 +1,954 @@
+breed [hi hi-ed]         ;; Relatively more educated people
+breed [lo lo-ed]         ;; Relatively less educated people
+globals
+
+[
+  alpha                  ;; The average number of affected people (newly misinformed) per tick
+  beta                   ;; The average number of fact-checking individuals per (newly corrected) per tick
+
+  lo-infected
+  hi-infected
+
+   country-1
+  country-2
+
+]
+
+hi-own
+[
+  hi-misinformed?           ;; If true, the person is misinformed
+  hi-corrected?             ;; If true, the person has first heard the false news, carried the misinformation for a while
+                         ;; then going through fact-checking process to correct the misinformation
+                         ;; They are now being able to make the correct judgement and cannot be affected by same piece of false news.
+  hi-susceptible?           ;; Tracks whether the person was initially susceptible
+  hi-misinformation-length  ;; How long the person has carried around the false knowledge
+  hi-corrected-time         ;; Time (in days) it takes before the person has a chance to do some fact-checking
+  nb-hi-misinformed         ;; Number of (secondary) misinformed people caused by a misinformed person at the end of each tick
+  nb-hi-corrected           ;; Number of corrected people at the end of each tick
+]
+
+lo-own
+[
+  lo-misinformed?           ;; If true, the person is misinformed
+  lo-corrected?             ;; If true, the person has first heard the false news, carried the misinformation for a while
+                         ;; then going through fact-checking process to correct the misinformation
+                         ;; They are now being able to make the correct judgement and cannot be affected by same piece of false news.
+  lo-susceptible?           ;; Tracks whether the person was initially susceptible
+  lo-misinformation-length  ;; How long the person has carried around the false knowledge
+  lo-corrected-time         ;; Time (in days) it takes before the person has a chance to do some fact-checking
+  nb-lo-misinformed         ;; Number of (secondary) misinformed people caused by a misinformed person at the end of each tick
+  nb-lo-corrected           ;; Number of corrected people at the end of each tick
+]
+
+;;;
+;;; SETUP PROCEDURES
+;;;
+
+to setup
+  clear-all
+  setup-people
+  ask patches
+    [set pcolor black]
+  reset-ticks
+
+  set lo-infected count( turtles with [color = gray])
+  set hi-infected count( turtles with [color = orange])
+
+
+  ; create countries
+  set country-1 patches with [pycor > 0.3]
+  ask country-1  [set pcolor 74]
+  set country-2 patches with [pycor < 0.3]
+  ask country-2  [set pcolor 124 ]
+
+  ;create wall around the patch
+  ask patches with [pxcor = max-pxcor]
+ [set pcolor blue]
+  ask patches with [pxcor = min-pxcor]
+  [set pcolor blue]
+  ask patches with [pycor = max-pycor]
+  [set pcolor blue]
+  ask patches with [pycor = min-pycor]
+  [set pcolor blue]
+
+  ask hi [move-only-on-green-patch]
+  ask lo [move-only-on-94-patch]
+end
+
+
+to setup-people
+  set-default-shape hi "person"
+  set-default-shape lo "person"
+
+  create-hi initial-hi-ed
+  [
+    setxy random-xcor random-ycor
+    set hi-corrected? false
+    set hi-misinformed? false
+    set hi-susceptible? true
+    set color yellow
+
+    ;; Set the corrected time for each agent to fall on a
+    ;; neutral distribution around average corrected time
+    set hi-corrected-time random-normal average-corrected-time-hi average-corrected-time-hi / 4
+
+    ;; make sure it lies between 0 and 2x average-corrected-time
+    if hi-corrected-time > average-corrected-time-hi * 2 [
+      set hi-corrected-time average-corrected-time-hi * 2
+    ]
+    if hi-corrected-time < 0 [ set hi-corrected-time 0 ]
+
+    ;; Each individual has a 10% chance of starting out misinformed.
+    if (random-float 100 < hi-misinformation-spreaders)
+    [
+      set hi-misinformed? true
+      set hi-susceptible? false
+      set hi-misinformation-length random hi-corrected-time
+    ]
+    if hi-misinformed?
+    [ set color orange ]
+    if hi-corrected?
+    [ set color green ]
+  ]
+  create-lo initial-lo-ed
+  [
+    setxy random-xcor random-ycor
+    set lo-corrected? false
+    set lo-misinformed? false
+    set lo-susceptible? true
+    set color white
+
+    ;; Set the corrected time for each agent to fall on a
+    ;; neutral distribution around average corrected time
+    set lo-corrected-time random-normal average-corrected-time-lo average-corrected-time-lo / 4
+
+    ;; make sure it lies between 0 and 2x average-corrected-time
+    if lo-corrected-time > average-corrected-time-lo * 2 [
+      set lo-corrected-time average-corrected-time-lo * 2
+    ]
+    if lo-corrected-time < 0 [ set lo-corrected-time 0 ]
+
+    ;; Each individual has a 20% chance of starting out misinformed.
+    if (random-float 100 < lo-misinformation-spreaders)
+    [
+      set lo-misinformed? true
+      set lo-susceptible? false
+      set lo-misinformation-length random lo-corrected-time
+    ]
+    if lo-misinformed?
+    [ set color gray ]
+    if lo-corrected?
+    [ set color blue ]
+  ]
+
+end
+
+;; Different people are displayed in 3 different colors depending on their misinformation status
+;; White is neutral individual neither being misinformed nor corrected  (set at beginning)
+;; Green is a fact-checking and corrected person
+;; Red is a misinformed person
+
+;;;
+;;; GO PROCEDURES
+;;;
+
+;; make the model run
+to go
+
+  ask turtles
+    [ move
+      clear-count
+      spread
+      correct
+  ask hi with
+  [ hi-misinformed? ]
+  [ set color orange]
+  ask hi with
+  [ hi-corrected? ]
+  [ set color green]
+
+  ask lo with
+  [ lo-misinformed? ]
+  [ set color gray ]
+  ask lo with
+  [ lo-corrected? ]
+  [ set color blue ]
+    ]
+ tick
+
+ if lo-infected = 0 [stop]
+
+
+  ask turtles [ ifelse [pcolor] of patch-ahead 1 = blue [
+    lt random-float 360 ]
+    [fd 1
+     rt random 10
+     lt random 10]
+    ]
+
+end
+
+to move-only-on-green-patch
+  ask lo
+    [ifelse [pcolor] of patch-ahead 1 != 74 [
+      ask n-of (0.6 * initial-hi-ed) lo [lt random-float 360]]
+      [fd 1]]
+end
+
+to move-only-on-94-patch
+  ask hi
+    [ifelse [pcolor] of patch-ahead 1 != 94 [
+      ask n-of (0.5 * initial-lo-ed) hi [
+        lt random-float 360]]
+      [fd 1 ]]
+end
+
+to spread
+  ifelse breed = hi
+   [ hi-spread-false-news]
+   [ lo-spread-false-news]
+end
+
+to correct
+  ifelse breed = hi
+  [ hi-maybe-corrected]
+  [ lo-maybe-corrected]
+end
+
+;; People move about towards random direction at random speed.
+to move  ;; turtle procedure
+  rt random-float 360
+  fd 1
+end
+
+to clear-count
+  ask hi
+  [ set nb-hi-misinformed 0
+    set nb-hi-corrected 0 ]
+  ask lo
+  [ set nb-lo-misinformed 0
+    set nb-lo-corrected 0 ]
+end
+
+;; Misinformation occur to more educated people
+to hi-spread-false-news
+   let hi-nearby-neutral (turtles-on neighbors) with [breed = hi]
+   with [ not hi-misinformed? and not hi-corrected?]
+     if hi-nearby-neutral != nobody
+     [ ask hi-nearby-neutral
+       [ if random-float 100 < spread-chance-hi
+         [ set hi-misinformed? true
+           set nb-hi-misinformed (nb-hi-misinformed + 1)
+         ]
+       ]
+     ]
+end
+
+;; Misinformation occur to less educated people
+to lo-spread-false-news
+   let lo-nearby-neutral (turtles-on neighbors) with [breed = lo]
+   with [ not lo-misinformed? and  not lo-corrected?]
+     if lo-nearby-neutral != nobody
+     [ ask lo-nearby-neutral
+       [ if random-float 100 < spread-chance-lo
+         [ set lo-misinformed? true
+           set nb-lo-misinformed (nb-lo-misinformed + 1)
+         ]
+       ]
+     ]
+end
+
+;; Misinformed people seek to verify sometimes factual information at a chosen probability level from the parameters
+to hi-maybe-corrected
+  set hi-misinformation-length hi-misinformation-length + 1
+  if hi-misinformation-length > hi-corrected-time
+  [
+    if random-float 100 < correction-chance-hi
+    [ set hi-misinformed? false
+      set hi-corrected? true
+      set nb-hi-corrected (nb-hi-corrected + 1)
+    ]
+  ]
+end
+
+
+;; Misinformed people seek to verify sometimes factual information at a chosen probability level from the parameters
+to lo-maybe-corrected
+  set lo-misinformation-length lo-misinformation-length + 1
+  if lo-misinformation-length > lo-corrected-time
+  [
+    if random-float 100 < correction-chance-lo
+    [ set lo-misinformed? false
+      set lo-corrected? true
+      set nb-lo-corrected (nb-lo-corrected + 1)
+    ]
+  ]
+end
+
+; Copyright 2011 Uri Wilensky.
+; See Info tab for full copyright and license.
+@#$#@#$#@
+GRAPHICS-WINDOW
+644
+13
+1102
+472
+-1
+-1
+18.0
+1
+10
+1
+1
+1
+0
+1
+1
+1
+-12
+12
+-12
+12
+1
+1
+1
+days
+30.0
+
+BUTTON
+233
+112
+316
+145
+setup
+setup
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
+
+BUTTON
+333
+112
+416
+145
+go
+go
+T
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+0
+
+SLIDER
+14
+10
+283
+43
+initial-hi-ed
+initial-hi-ed
+50
+400
+125.0
+5
+1
+NIL
+HORIZONTAL
+
+PLOT
+342
+165
+636
+295
+Populations
+days
+# of people
+0.0
+10.0
+0.0
+10.0
+true
+true
+"" ""
+PENS
+"Hi-misinformed" 1.0 0 -955883 true "" "plot count hi with [ hi-misinformed? ]"
+"Hi-corrected" 1.0 0 -10899396 true "" "plot count hi with [ not hi-misinformed? ]"
+"Lo-misinformed" 1.0 0 -9276814 true "" "plot count lo with [ lo-misinformed? ]"
+"Lo-corrected" 1.0 0 -14070903 true "" "plot count lo with [ not lo-misinformed? ]"
+
+SLIDER
+267
+401
+409
+434
+spread-chance-hi
+spread-chance-hi
+10
+100
+55.0
+5
+1
+NIL
+HORIZONTAL
+
+SLIDER
+69
+401
+257
+434
+correction-chance-hi
+correction-chance-hi
+10
+100
+55.0
+5
+1
+NIL
+HORIZONTAL
+
+PLOT
+15
+165
+333
+293
+Cumulative misinformed and corrected
+days
+% total pop
+0.0
+10.0
+0.0
+10.0
+true
+true
+"" ""
+PENS
+"% Hi-misinformed" 1.0 0 -955883 true "" "plot ((count hi with [ hi-corrected? ] + count hi with [ hi-misinformed? ]) / initial-hi-ed * 100)"
+"% Hi-corrected" 1.0 0 -14439633 true "" "plot (count hi with [ hi-corrected? ]/ initial-hi-ed) * 100"
+"% Lo-misinformed" 1.0 0 -7500403 true "" "plot ((count lo with [ lo-corrected? ] + count lo with [ lo-misinformed? ]) / initial-lo-ed * 100)"
+"% Lo-corrected" 1.0 0 -14070903 true "" "plot (count lo with [ lo-corrected? ]/ initial-lo-ed) * 100"
+
+SLIDER
+415
+402
+636
+435
+average-corrected-time-hi
+average-corrected-time-hi
+50
+300
+300.0
+10
+1
+NIL
+HORIZONTAL
+
+SLIDER
+14
+49
+283
+82
+initial-lo-ed
+initial-lo-ed
+0
+400
+85.0
+5
+1
+NIL
+HORIZONTAL
+
+SLIDER
+266
+439
+409
+472
+spread-chance-lo
+spread-chance-lo
+10
+100
+60.0
+5
+1
+NIL
+HORIZONTAL
+
+SLIDER
+415
+439
+636
+472
+average-corrected-time-lo
+average-corrected-time-lo
+50
+300
+300.0
+10
+1
+NIL
+HORIZONTAL
+
+SLIDER
+295
+10
+530
+43
+hi-misinformation-spreaders
+hi-misinformation-spreaders
+0
+100
+51.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+295
+50
+530
+83
+lo-misinformation-spreaders
+lo-misinformation-spreaders
+0
+100
+51.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+70
+439
+257
+472
+correction-chance-lo
+correction-chance-lo
+0
+100
+49.0
+1
+1
+NIL
+HORIZONTAL
+
+MONITOR
+190
+301
+359
+346
+count lo corrected agents
+count turtles with [color = blue]
+17
+1
+11
+
+MONITOR
+15
+299
+182
+344
+count lo misinformed agents
+lo-infected
+17
+1
+11
+
+MONITOR
+15
+352
+182
+397
+count hi misinformed agents
+count turtles with [color = orange]
+17
+1
+11
+
+MONITOR
+190
+352
+359
+397
+count hi corrected agents
+count turtles with [color = green]
+17
+1
+11
+
+@#$#@#$#@
+## WHAT IS IT?
+
+What is it about? 
+
+What motivates us on working about this topic?
+
+What are the assumptions?
+
+What's the purpose of this model?
+
+## HOW IT WORKS
+
+Individuals wander around the world in random motion. Upon coming into contact with a misinformed person, by being in any of the (any number of) surrounding neighbors of the misinformed person or in the same location, a normal individual has a chance of being misinformed. The user sets the number of people in the world, as well as the probability of being misinformed by a neighbor. 
+
+A misinformed person has a probability of being corrected after taking a fact-checking action, which is also set by the user. The correction time of each individual is determined by pulling from an approximately normal distribution with a mean of the average corrected time set by the user.
+
+The colors of the individuals indicate the level of education. Three colors are used: red individuals are low on (vocational) education level, yellow individuals are medium, blue individuals are high. Once recovered, the individual turns green and get kind of "immuned" from the same piece of false new.
+
+The graph MISINFORMATION AND CORRECTION RATE shows the rate of change of the cumulative misinformed and corrected in the population. It tracks the average number of secondary misinformed individual and corrected individual per tick. The reproduction number is calculated as we allow for more than one misinformed individual in the population, and introduce aforementioned variables.
+
+## HOW TO USE IT
+
+The SETUP button creates individuals according to the parameter values chosen by the user. Each individual has a 10% chance of being initialized as misinformed. Once the model has been setup, push the GO button to run the model. GO starts the model and runs it continuously until GO is pushed again.
+
+Note that in this model each time-step can be considered to be in days, although any suitable time unit will do.
+
+What follows is a summary of the sliders in the model.
+
+INITIAL-PEOPLE (initialized to vary between 50 - 400): The total number of individuals in the simulation, determined by the user.
+MISINFORMATION-CHANCE (10 - 100): Probability of misinformation spread from one individual to another.
+CORRECTION-CHANCE (10 - 100): Probability of a misinformed individual to correct their knowledge/awared after performing some fact-checking. 
+AVERAGE-CORRECTION-TIME (50 - 300): The time it takes for an individual to being corrected on average. The actual individual's correction time is pulled from a normal distribution centered around the AVERAGE-CORRECTION-TIME at its mean, with a standard deviation of a quarter of the AVERAGE-CORRECTION-TIME. Each time-step can be considered to be in days, although any suitable time unit will do.
+
+A number of graphs are also plotted in this model.
+
+CUMULATIVE INFECTED AND RECOVERED: This plots the total percentage of infected and recovered individuals over the course of the disease spread.
+POPULATIONS: This plots the total number of people with or without the flu over time.
+INFECTION AND RECOVERY RATES: This plots the estimated rates at which the disease is spreading. BetaN is the rate at which the cumulative infected changes, and Gamma rate at which the cumulative recovered changes.
+R_0: This is an estimate of the reproduction number, only comparable to the Kermack McKendrick's definition if the initial number of infected were 1.
+
+
+## CITATION
+
+* Yang, C. and Wilensky, U. (2011).  NetLogo epiDEM Basic model.  http://ccl.northwestern.edu/netlogo/models/epiDEMBasic.  Center for Connected Learning and Computer-Based Modeling, Northwestern University, Evanston, IL.
+
+* Wilensky, U. (1999). NetLogo. http://ccl.northwestern.edu/netlogo/. Center for Connected Learning and Computer-Based Modeling, Northwestern University, Evanston, IL.
+@#$#@#$#@
+default
+true
+0
+Polygon -7500403 true true 150 5 40 250 150 205 260 250
+
+airplane
+true
+0
+Polygon -7500403 true true 150 0 135 15 120 60 120 105 15 165 15 195 120 180 135 240 105 270 120 285 150 270 180 285 210 270 165 240 180 180 285 195 285 165 180 105 180 60 165 15
+
+arrow
+true
+0
+Polygon -7500403 true true 150 0 0 150 105 150 105 293 195 293 195 150 300 150
+
+box
+false
+0
+Polygon -7500403 true true 150 285 285 225 285 75 150 135
+Polygon -7500403 true true 150 135 15 75 150 15 285 75
+Polygon -7500403 true true 15 75 15 225 150 285 150 135
+Line -16777216 false 150 285 150 135
+Line -16777216 false 150 135 15 75
+Line -16777216 false 150 135 285 75
+
+bug
+true
+0
+Circle -7500403 true true 96 182 108
+Circle -7500403 true true 110 127 80
+Circle -7500403 true true 110 75 80
+Line -7500403 true 150 100 80 30
+Line -7500403 true 150 100 220 30
+
+butterfly
+true
+0
+Polygon -7500403 true true 150 165 209 199 225 225 225 255 195 270 165 255 150 240
+Polygon -7500403 true true 150 165 89 198 75 225 75 255 105 270 135 255 150 240
+Polygon -7500403 true true 139 148 100 105 55 90 25 90 10 105 10 135 25 180 40 195 85 194 139 163
+Polygon -7500403 true true 162 150 200 105 245 90 275 90 290 105 290 135 275 180 260 195 215 195 162 165
+Polygon -16777216 true false 150 255 135 225 120 150 135 120 150 105 165 120 180 150 165 225
+Circle -16777216 true false 135 90 30
+Line -16777216 false 150 105 195 60
+Line -16777216 false 150 105 105 60
+
+car
+false
+0
+Polygon -7500403 true true 300 180 279 164 261 144 240 135 226 132 213 106 203 84 185 63 159 50 135 50 75 60 0 150 0 165 0 225 300 225 300 180
+Circle -16777216 true false 180 180 90
+Circle -16777216 true false 30 180 90
+Polygon -16777216 true false 162 80 132 78 134 135 209 135 194 105 189 96 180 89
+Circle -7500403 true true 47 195 58
+Circle -7500403 true true 195 195 58
+
+circle
+false
+0
+Circle -7500403 true true 0 0 300
+
+circle 2
+false
+0
+Circle -7500403 true true 0 0 300
+Circle -16777216 true false 30 30 240
+
+cow
+false
+0
+Polygon -7500403 true true 200 193 197 249 179 249 177 196 166 187 140 189 93 191 78 179 72 211 49 209 48 181 37 149 25 120 25 89 45 72 103 84 179 75 198 76 252 64 272 81 293 103 285 121 255 121 242 118 224 167
+Polygon -7500403 true true 73 210 86 251 62 249 48 208
+Polygon -7500403 true true 25 114 16 195 9 204 23 213 25 200 39 123
+
+cylinder
+false
+0
+Circle -7500403 true true 0 0 300
+
+dot
+false
+0
+Circle -7500403 true true 90 90 120
+
+face happy
+false
+0
+Circle -7500403 true true 8 8 285
+Circle -16777216 true false 60 75 60
+Circle -16777216 true false 180 75 60
+Polygon -16777216 true false 150 255 90 239 62 213 47 191 67 179 90 203 109 218 150 225 192 218 210 203 227 181 251 194 236 217 212 240
+
+face neutral
+false
+0
+Circle -7500403 true true 8 7 285
+Circle -16777216 true false 60 75 60
+Circle -16777216 true false 180 75 60
+Rectangle -16777216 true false 60 195 240 225
+
+face sad
+false
+0
+Circle -7500403 true true 8 8 285
+Circle -16777216 true false 60 75 60
+Circle -16777216 true false 180 75 60
+Polygon -16777216 true false 150 168 90 184 62 210 47 232 67 244 90 220 109 205 150 198 192 205 210 220 227 242 251 229 236 206 212 183
+
+fish
+false
+0
+Polygon -1 true false 44 131 21 87 15 86 0 120 15 150 0 180 13 214 20 212 45 166
+Polygon -1 true false 135 195 119 235 95 218 76 210 46 204 60 165
+Polygon -1 true false 75 45 83 77 71 103 86 114 166 78 135 60
+Polygon -7500403 true true 30 136 151 77 226 81 280 119 292 146 292 160 287 170 270 195 195 210 151 212 30 166
+Circle -16777216 true false 215 106 30
+
+flag
+false
+0
+Rectangle -7500403 true true 60 15 75 300
+Polygon -7500403 true true 90 150 270 90 90 30
+Line -7500403 true 75 135 90 135
+Line -7500403 true 75 45 90 45
+
+flower
+false
+0
+Polygon -10899396 true false 135 120 165 165 180 210 180 240 150 300 165 300 195 240 195 195 165 135
+Circle -7500403 true true 85 132 38
+Circle -7500403 true true 130 147 38
+Circle -7500403 true true 192 85 38
+Circle -7500403 true true 85 40 38
+Circle -7500403 true true 177 40 38
+Circle -7500403 true true 177 132 38
+Circle -7500403 true true 70 85 38
+Circle -7500403 true true 130 25 38
+Circle -7500403 true true 96 51 108
+Circle -16777216 true false 113 68 74
+Polygon -10899396 true false 189 233 219 188 249 173 279 188 234 218
+Polygon -10899396 true false 180 255 150 210 105 210 75 240 135 240
+
+house
+false
+0
+Rectangle -7500403 true true 45 120 255 285
+Rectangle -16777216 true false 120 210 180 285
+Polygon -7500403 true true 15 120 150 15 285 120
+Line -16777216 false 30 120 270 120
+
+leaf
+false
+0
+Polygon -7500403 true true 150 210 135 195 120 210 60 210 30 195 60 180 60 165 15 135 30 120 15 105 40 104 45 90 60 90 90 105 105 120 120 120 105 60 120 60 135 30 150 15 165 30 180 60 195 60 180 120 195 120 210 105 240 90 255 90 263 104 285 105 270 120 285 135 240 165 240 180 270 195 240 210 180 210 165 195
+Polygon -7500403 true true 135 195 135 240 120 255 105 255 105 285 135 285 165 240 165 195
+
+line
+true
+0
+Line -7500403 true 150 0 150 300
+
+line half
+true
+0
+Line -7500403 true 150 0 150 150
+
+pentagon
+false
+0
+Polygon -7500403 true true 150 15 15 120 60 285 240 285 285 120
+
+person
+false
+0
+Circle -7500403 true true 110 5 80
+Polygon -7500403 true true 105 90 120 195 90 285 105 300 135 300 150 225 165 300 195 300 210 285 180 195 195 90
+Rectangle -7500403 true true 127 79 172 94
+Polygon -7500403 true true 195 90 240 150 225 180 165 105
+Polygon -7500403 true true 105 90 60 150 75 180 135 105
+
+person lefty
+false
+0
+Circle -7500403 true true 170 5 80
+Polygon -7500403 true true 165 90 180 195 150 285 165 300 195 300 210 225 225 300 255 300 270 285 240 195 255 90
+Rectangle -7500403 true true 187 79 232 94
+Polygon -7500403 true true 255 90 300 150 285 180 225 105
+Polygon -7500403 true true 165 90 120 150 135 180 195 105
+
+person righty
+false
+0
+Circle -7500403 true true 50 5 80
+Polygon -7500403 true true 45 90 60 195 30 285 45 300 75 300 90 225 105 300 135 300 150 285 120 195 135 90
+Rectangle -7500403 true true 67 79 112 94
+Polygon -7500403 true true 135 90 180 150 165 180 105 105
+Polygon -7500403 true true 45 90 0 150 15 180 75 105
+
+plant
+false
+0
+Rectangle -7500403 true true 135 90 165 300
+Polygon -7500403 true true 135 255 90 210 45 195 75 255 135 285
+Polygon -7500403 true true 165 255 210 210 255 195 225 255 165 285
+Polygon -7500403 true true 135 180 90 135 45 120 75 180 135 210
+Polygon -7500403 true true 165 180 165 210 225 180 255 120 210 135
+Polygon -7500403 true true 135 105 90 60 45 45 75 105 135 135
+Polygon -7500403 true true 165 105 165 135 225 105 255 45 210 60
+Polygon -7500403 true true 135 90 120 45 150 15 180 45 165 90
+
+square
+false
+0
+Rectangle -7500403 true true 30 30 270 270
+
+square 2
+false
+0
+Rectangle -7500403 true true 30 30 270 270
+Rectangle -16777216 true false 60 60 240 240
+
+star
+false
+0
+Polygon -7500403 true true 151 1 185 108 298 108 207 175 242 282 151 216 59 282 94 175 3 108 116 108
+
+target
+false
+0
+Circle -7500403 true true 0 0 300
+Circle -16777216 true false 30 30 240
+Circle -7500403 true true 60 60 180
+Circle -16777216 true false 90 90 120
+Circle -7500403 true true 120 120 60
+
+tree
+false
+0
+Circle -7500403 true true 118 3 94
+Rectangle -6459832 true false 120 195 180 300
+Circle -7500403 true true 65 21 108
+Circle -7500403 true true 116 41 127
+Circle -7500403 true true 45 90 120
+Circle -7500403 true true 104 74 152
+
+triangle
+false
+0
+Polygon -7500403 true true 150 30 15 255 285 255
+
+triangle 2
+false
+0
+Polygon -7500403 true true 150 30 15 255 285 255
+Polygon -16777216 true false 151 99 225 223 75 224
+
+truck
+false
+0
+Rectangle -7500403 true true 4 45 195 187
+Polygon -7500403 true true 296 193 296 150 259 134 244 104 208 104 207 194
+Rectangle -1 true false 195 60 195 105
+Polygon -16777216 true false 238 112 252 141 219 141 218 112
+Circle -16777216 true false 234 174 42
+Rectangle -7500403 true true 181 185 214 194
+Circle -16777216 true false 144 174 42
+Circle -16777216 true false 24 174 42
+Circle -7500403 false true 24 174 42
+Circle -7500403 false true 144 174 42
+Circle -7500403 false true 234 174 42
+
+turtle
+true
+0
+Polygon -10899396 true false 215 204 240 233 246 254 228 266 215 252 193 210
+Polygon -10899396 true false 195 90 225 75 245 75 260 89 269 108 261 124 240 105 225 105 210 105
+Polygon -10899396 true false 105 90 75 75 55 75 40 89 31 108 39 124 60 105 75 105 90 105
+Polygon -10899396 true false 132 85 134 64 107 51 108 17 150 2 192 18 192 52 169 65 172 87
+Polygon -10899396 true false 85 204 60 233 54 254 72 266 85 252 107 210
+Polygon -7500403 true true 119 75 179 75 209 101 224 135 220 225 175 261 128 261 81 224 74 135 88 99
+
+wheel
+false
+0
+Circle -7500403 true true 3 3 294
+Circle -16777216 true false 30 30 240
+Line -7500403 true 150 285 150 15
+Line -7500403 true 15 150 285 150
+Circle -7500403 true true 120 120 60
+Line -7500403 true 216 40 79 269
+Line -7500403 true 40 84 269 221
+Line -7500403 true 40 216 269 79
+Line -7500403 true 84 40 221 269
+
+x
+false
+0
+Polygon -7500403 true true 270 75 225 30 30 225 75 270
+Polygon -7500403 true true 30 75 75 30 270 225 225 270
+@#$#@#$#@
+NetLogo 6.2.0
+@#$#@#$#@
+@#$#@#$#@
+@#$#@#$#@
+@#$#@#$#@
+@#$#@#$#@
+default
+0.0
+-0.2 0 0.0 1.0
+0.0 1 1.0 0.0
+0.2 0 0.0 1.0
+link direction
+true
+0
+Line -7500403 true 150 150 90 180
+Line -7500403 true 150 150 210 180
+@#$#@#$#@
+0
+@#$#@#$#@
